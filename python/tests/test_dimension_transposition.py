@@ -92,14 +92,14 @@ def test_dimension_transposition_tzc_to_tcz(store_path):
     n_frames = 6
     frame_height, frame_width = 4, 4
 
-    with ZarrStream(settings) as stream:
-        for i in range(n_frames):
-            # Create frame with unique value for each position
-            frame = np.full((frame_height, frame_width), i, dtype=np.uint8)
-            stream.append(frame.tobytes())
-
+    stream = ZarrStream(settings)
+    for i in range(n_frames):
+        # Create frame with unique value for each position
+        frame = np.full((frame_height, frame_width), i, dtype=np.uint8)
+        stream.append(frame)
+    stream.close()
     # Verify metadata has axes in canonical TCZYX order
-    with open(store_path / "0" / "zarr.json", "r") as f:
+    with open(store_path / "zarr.json", "r") as f:
         group_metadata = json.load(f)
 
     axes = group_metadata["attributes"]["ome"]["multiscales"][0]["axes"]
@@ -115,7 +115,7 @@ def test_dimension_transposition_tzc_to_tcz(store_path):
     )
 
     # Verify data is stored in canonical TCZYX order
-    root = zarr.open(store_path / "0" / "0", "r")
+    root = zarr.open(store_path / "0", mode="r")
     data = np.array(root[:])
 
     # Data shape should be (1, 2, 3, 4, 4) = (T, C, Z, Y, X)
@@ -191,13 +191,13 @@ def test_dimension_no_transposition_needed(store_path):
     n_frames = 4
     frame_height, frame_width = 4, 4
 
-    with ZarrStream(settings) as stream:
-        for i in range(n_frames):
-            frame = np.full((frame_height, frame_width), i, dtype=np.uint8)
-            stream.append(frame.tobytes())
-
+    stream = ZarrStream(settings)
+    for i in range(n_frames):
+        frame = np.full((frame_height, frame_width), i, dtype=np.uint8)
+        stream.append(frame)
+    stream.close()
     # Verify metadata
-    with open(store_path / "0" / "zarr.json", "r") as f:
+    with open(store_path / "zarr.json", "r") as f:
         group_metadata = json.load(f)
 
     axes = group_metadata["attributes"]["ome"]["multiscales"][0]["axes"]
@@ -208,7 +208,7 @@ def test_dimension_no_transposition_needed(store_path):
     )
 
     # Verify data
-    root = zarr.open(store_path / "0" / "0", "r")
+    root = zarr.open(store_path / "0", mode="r")
     data = np.array(root[:])
 
     assert data.shape == (2, 2, 4, 4), f"Expected shape (2, 2, 4, 4), got {data.shape}"
@@ -275,13 +275,14 @@ def test_complex_dimension_order_tzcyx_to_tczyx(store_path):
     n_frames = 12
     frame_height, frame_width = 2, 2
 
-    with ZarrStream(settings) as stream:
-        for i in range(n_frames):
-            frame = np.full((frame_height, frame_width), i, dtype=np.uint8)
-            stream.append(frame.tobytes())
-
+    stream = ZarrStream(settings)
+    for i in range(n_frames):
+        frame = np.full((frame_height, frame_width), i, dtype=np.uint8)
+        stream.append(frame)
+    stream.close()
+    
     # Verify axes order
-    with open(store_path / "0" / "zarr.json", "r") as f:
+    with open(store_path / "zarr.json", "r") as f:
         group_metadata = json.load(f)
 
     axes = group_metadata["attributes"]["ome"]["multiscales"][0]["axes"]
@@ -293,7 +294,7 @@ def test_complex_dimension_order_tzcyx_to_tczyx(store_path):
     )
 
     # Verify data shape and content
-    root = zarr.open(store_path / "0" / "0", "r")
+    root = zarr.open(store_path / "0", mode="r")
     data = np.array(root[:])
 
     # Shape should be (T=2, C=3, Z=2, Y=2, X=2)
