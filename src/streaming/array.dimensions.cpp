@@ -392,11 +392,16 @@ ArrayDimensions::transpose_frame_id(uint64_t frame_id) const
     std::vector<uint64_t> acq_coords(n);
     uint64_t remaining = frame_id;
 
-    // Calculate strides in acquisition order (excluding last 2 spatial dims)
+    // Calculate strides in acquisition order (only for non-spatial dims)
     std::vector<uint64_t> acq_strides(n, 1);
-    for (int i = static_cast<int>(n) - 3; i >= 0; --i) {
-        acq_strides[i] =
-          acq_strides[i + 1] * acquisition_dims_[i + 1].array_size_px;
+    // The last non-spatial dimension (index n-3) has stride 1
+    if (n > 2) {
+        acq_strides[n - 3] = 1;
+        // Build strides going backwards, multiplying by non-spatial dim sizes
+        for (int i = static_cast<int>(n) - 4; i >= 0; --i) {
+            acq_strides[i] =
+              acq_strides[i + 1] * acquisition_dims_[i + 1].array_size_px;
+        }
     }
 
     // Extract coordinates in acquisition order
@@ -417,8 +422,13 @@ ArrayDimensions::transpose_frame_id(uint64_t frame_id) const
     // Convert canonical coordinates back to frame_id
     // Use dims_ which is now in canonical order
     std::vector<uint64_t> can_strides(n, 1);
-    for (int i = static_cast<int>(n) - 3; i >= 0; --i) {
-        can_strides[i] = can_strides[i + 1] * dims_[i + 1].array_size_px;
+    // The last non-spatial dimension (index n-3) has stride 1
+    if (n > 2) {
+        can_strides[n - 3] = 1;
+        // Build strides going backwards, multiplying by non-spatial dim sizes
+        for (int i = static_cast<int>(n) - 4; i >= 0; --i) {
+            can_strides[i] = can_strides[i + 1] * dims_[i + 1].array_size_px;
+        }
     }
 
     uint64_t canonical_frame_id = 0;
