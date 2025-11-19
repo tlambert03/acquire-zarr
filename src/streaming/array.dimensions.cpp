@@ -4,15 +4,77 @@
 
 ArrayDimensions::ArrayDimensions(std::vector<ZarrDimension>&& dims,
                                  ZarrDataType dtype)
-  : dims_(std::move(dims))
-  , dtype_(dtype)
+  : dtype_(dtype)
+  , needs_transposition_(false)
   , chunks_per_shard_(1)
   , number_of_shards_(1)
   , bytes_per_chunk_(zarr::bytes_of_type(dtype))
   , number_of_chunks_in_memory_(1)
 {
-    EXPECT(dims_.size() > 2, "Array must have at least three dimensions.");
+    EXPECT(dims.size() > 2, "Array must have at least three dimensions.");
 
+    // Store original acquisition order dimensions
+    acquisition_dims_ = std::move(dims);
+    const auto n = acquisition_dims_.size();
+
+    // Compute canonical OME-NGFF dimension order (TCZYX)
+    acquisition_to_canonical_.resize(n);
+    canonical_to_acquisition_.resize(n);
+
+    // Collect indices for each dimension type in acquisition order
+    std::vector<size_t> time_dims, channel_dims, space_dims, other_dims;
+
+    for (size_t i = 0; i < n; ++i) {
+        switch (acquisition_dims_[i].type) {
+            case ZarrDimensionType_Time:
+                time_dims.push_back(i);
+                break;
+            case ZarrDimensionType_Channel:
+                channel_dims.push_back(i);
+                break;
+            case ZarrDimensionType_Space:
+                space_dims.push_back(i);
+                break;
+            case ZarrDimensionType_Other:
+                other_dims.push_back(i);
+                break;
+            default:
+                break;
+        }
+    }
+
+    // Build canonical ordering: Time -> Channel -> Other -> Space
+    // Store dimensions in canonical order in dims_
+    size_t canonical_idx = 0;
+
+    auto add_dims = [&](const std::vector<size_t>& indices) {
+        for (size_t acquisition_idx : indices) {
+            dims_.push_back(acquisition_dims_[acquisition_idx]);
+            acquisition_to_canonical_[acquisition_idx] = canonical_idx;
+            canonical_to_acquisition_[canonical_idx] = acquisition_idx;
+            ++canonical_idx;
+        }
+    };
+
+    add_dims(time_dims);
+    add_dims(channel_dims);
+    add_dims(other_dims);
+    add_dims(space_dims);
+
+    // canonical_dims_ is just a copy of dims_ since dims_ is now in canonical
+    // order
+    canonical_dims_ = dims_;
+
+    // Check if transposition is needed
+    needs_transposition_ = false;
+    for (size_t i = 0; i < n; ++i) {
+        if (acquisition_to_canonical_[i] != i) {
+            needs_transposition_ = true;
+            break;
+        }
+    }
+
+    // Now compute chunk/shard info using canonical dimensions
     for (auto i = 0; i < dims_.size(); ++i) {
         const auto& dim = dims_[i];
         bytes_per_chunk_ *= dim.chunk_size_px;
@@ -303,4 +365,66 @@ ArrayDimensions::shard_internal_index_(uint32_t chunk_index) const
     }
 
     return index;
+}
+
+const ZarrDimension&
+ArrayDimensions::canonical_dimension(size_t idx) const
+{
+    return canonical_dims_[idx];
+}
+
+bool
+ArrayDimensions::needs_transposition() const
+{
+    return needs_transposition_;
+}
+
+uint64_t
+ArrayDimensions::transpose_frame_id(uint64_t frame_id) const
+{
+    if (!needs_transposition_) {
+        return frame_id;
+    }
+
+    const auto n = ndims();
+
+    // Convert frame_id to multi-dimensional coordinates in acquisition order
+    std::vector<uint64_t> acq_coords(n);
+    uint64_t remaining = frame_id;
+
+    // Calculate strides in acquisition order (excluding last 2 spatial dims)
+    std::vector<uint64_t> acq_strides(n, 1);
+    for (int i = static_cast<int>(n) - 3; i >= 0; --i) {
+        acq_strides[i] =
+          acq_strides[i + 1] * acquisition_dims_[i + 1].array_size_px;
+    }
+
+    // Extract coordinates in acquisition order
+    for (size_t i = 0; i < n - 2; ++i) {
+        acq_coords[i] = remaining / acq_strides[i];
+        remaining %= acq_strides[i];
+    }
+    // Last two dimensions are spatial (Y, X) and always 0 for frame_id
+    acq_coords[n - 2] = 0;
+    acq_coords[n - 1] = 0;
+
+    // Permute coordinates to canonical order
+    std::vector<uint64_t> can_coords(n);
+    for (size_t i = 0; i < n; ++i) {
+        can_coords[acquisition_to_canonical_[i]] = acq_coords[i];
+    }
+
+    // Convert canonical coordinates back to frame_id
+    // Use dims_ which is now in canonical order
+    std::vector<uint64_t> can_strides(n, 1);
+    for (int i = static_cast<int>(n) - 3; i >= 0; --i) {
+        can_strides[i] = can_strides[i + 1] * dims_[i + 1].array_size_px;
+    }
+
+    uint64_t canonical_frame_id = 0;
+    for (size_t i = 0; i < n - 2; ++i) {
+        canonical_frame_id += can_coords[i] * can_strides[i];
+    }
+
+    return canonical_frame_id;
 }

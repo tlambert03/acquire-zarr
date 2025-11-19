@@ -57,6 +57,20 @@ class ArrayDimensions
     const ZarrDimension& width_dim() const;
 
     /**
+     * @brief Get the dimension at the given index in canonical OME-NGFF order
+     * (TCZYX).
+     * @param idx The index in canonical order.
+     * @return The dimension at the given index.
+     */
+    const ZarrDimension& canonical_dimension(size_t idx) const;
+
+    /**
+     * @brief Check if dimensions need transposition for OME-NGFF compliance.
+     * @return True if dimensions are not in canonical TCZYX order.
+     */
+    bool needs_transposition() const;
+
+    /**
      * @brief Get the index of a chunk in the chunk lattice for a given frame
      * and dimension.
      * @param frame_id The frame ID.
@@ -145,8 +159,22 @@ class ArrayDimensions
      */
     uint32_t shard_internal_index(uint32_t chunk_index) const;
 
+    /**
+     * @brief Transpose a frame ID from acquisition order to canonical OME-NGFF
+     * order.
+     * @param frame_id The frame ID in acquisition order.
+     * @return The frame ID in canonical TCZYX order.
+     */
+    uint64_t transpose_frame_id(uint64_t frame_id) const;
+
   private:
-    std::vector<ZarrDimension> dims_;
+    std::vector<ZarrDimension> dims_; // Stored in canonical OME-NGFF order
+    std::vector<ZarrDimension> canonical_dims_; // Same as dims_
+    std::vector<ZarrDimension> acquisition_dims_; // Original acquisition order
+    std::vector<size_t> acquisition_to_canonical_;
+    std::vector<size_t> canonical_to_acquisition_;
+    bool needs_transposition_;
+
     ZarrDataType dtype_;
 
     size_t bytes_per_chunk_;
