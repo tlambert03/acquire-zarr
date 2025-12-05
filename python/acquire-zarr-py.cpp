@@ -865,6 +865,12 @@ class PyZarrStreamSettings
     bool overwrite() const { return overwrite_; }
     void set_overwrite(bool overwrite) { overwrite_ = overwrite; }
 
+    bool write_group_metadata() const { return write_group_metadata_; }
+    void set_write_group_metadata(bool write)
+    {
+        write_group_metadata_ = write;
+    }
+
     const std::vector<PyZarrArraySettings>& arrays() const { return arrays_; }
     std::vector<PyZarrArraySettings>& arrays() { return arrays_; }
     void set_arrays(const std::vector<PyZarrArraySettings>& arrays)
@@ -886,6 +892,7 @@ class PyZarrStreamSettings
         settings_.store_path = store_path_.c_str();
         settings_.max_threads = max_threads_;
         settings_.overwrite = static_cast<int>(overwrite_);
+        settings_.write_group_metadata = write_group_metadata_;
 
         if (s3_settings_) {
             *(settings_.s3_settings) = *(s3_settings_->settings());
@@ -980,6 +987,7 @@ class PyZarrStreamSettings
     mutable std::optional<PyZarrS3Settings> s3_settings_{ std::nullopt };
     unsigned int max_threads_{ std::thread::hardware_concurrency() };
     bool overwrite_{ false };
+    bool write_group_metadata_{ true };
 
     std::vector<PyZarrArraySettings> arrays_;
     std::vector<PyZarrPlate> plates_;
@@ -2050,6 +2058,9 @@ PYBIND11_MODULE(acquire_zarr, m)
       .def_property("overwrite",
                     &PyZarrStreamSettings::overwrite,
                     &PyZarrStreamSettings::set_overwrite)
+      .def_property("write_group_metadata",
+                    &PyZarrStreamSettings::write_group_metadata,
+                    &PyZarrStreamSettings::set_write_group_metadata)
       .def_property(
         "arrays",
         [](PyZarrStreamSettings& self) -> py::object {

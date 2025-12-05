@@ -379,6 +379,8 @@ class StreamSettings:
         max_threads: Maximum number of threads for parallel processing.
         custom_metadata: Optional JSON-formatted custom metadata to include in the dataset.
         overwrite: If True, removes any existing data at store_path before writing.
+        write_group_metadata: If True (default), write zarr.json for group nodes.
+            If False, only write zarr.json for array nodes.
 
     Note:
         For S3 storage with endpoint "s3://my-endpoint.com", bucket "my-bucket", and
@@ -392,6 +394,7 @@ class StreamSettings:
     store_path: str
     max_threads: int
     overwrite: bool
+    write_group_metadata: bool
     plates: List[Plate]
 
     def __init__(self, **kwargs) -> None: ...

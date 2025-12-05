@@ -35,6 +35,9 @@ extern "C"
         ZarrHCSSettings* hcs_settings; /**< Optional HCS plate settings. If
                                                non-NULL, the stream will be
                                                configured for HCS data. */
+        bool write_group_metadata; /**< If true (default), write zarr.json for
+                                        group nodes. If false, only write
+                                        zarr.json for array nodes. */
     } ZarrStreamSettings;
 
     typedef struct ZarrStream_s ZarrStream;

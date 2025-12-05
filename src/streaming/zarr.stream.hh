@@ -67,6 +67,7 @@ struct ZarrStream_s
 
     std::string store_path_;
     std::optional<zarr::S3Settings> s3_settings_;
+    bool write_group_metadata_{ true }; // whether to write zarr.json for groups
 
     // maps of plates and wells, key by their paths relative to the store root
     std::unordered_map<std::string, zarr::Plate> plates_;

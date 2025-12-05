@@ -113,15 +113,18 @@ zarr::MultiscaleArray::close_()
         }
     }
 
-    if (!write_metadata_()) {
-        LOG_ERROR("Error closing group: failed to write metadata");
-        return false;
-    }
+    // Only write group metadata if the flag is set
+    if (config_->write_group_metadata) {
+        if (!write_metadata_()) {
+            LOG_ERROR("Error closing group: failed to write metadata");
+            return false;
+        }
 
-    for (auto& [key, sink] : metadata_sinks_) {
-        EXPECT(zarr::finalize_sink(std::move(sink)),
-               "Failed to finalize metadata sink ",
-               key);
+        for (auto& [key, sink] : metadata_sinks_) {
+            EXPECT(zarr::finalize_sink(std::move(sink)),
+                   "Failed to finalize metadata sink ",
+                   key);
+        }
     }
 
     arrays_.clear();

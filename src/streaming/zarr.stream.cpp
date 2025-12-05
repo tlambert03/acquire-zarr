@@ -277,7 +277,8 @@ make_array_config(const ZarrArraySettings* settings,
                   const std::string& store_root,
                   const std::string& parent_path,
                   const std::optional<std::string>& bucket_name,
-                  std::string& error)
+                  std::string& error,
+                  bool write_group_metadata = true)
 {
     // remove leading/trailing slashes and whitespace
     std::string key = zarr::regularize_key(settings->output_key);
@@ -307,7 +308,8 @@ make_array_config(const ZarrArraySettings* settings,
                                                dimensions,
                                                settings->data_type,
                                                downsampling_method,
-                                               0);
+                                               0,
+                                               write_group_metadata);
 }
 
 [[nodiscard]] bool
@@ -1160,7 +1162,7 @@ ZarrStream_s::configure_array_(const ZarrArraySettings* settings,
     }
 
     auto config = make_array_config(
-      settings, store_path_, parent_path, bucket_name, error_);
+      settings, store_path_, parent_path, bucket_name, error_, write_group_metadata_);
     if (config == nullptr) {
         return false;
     }
@@ -1304,6 +1306,7 @@ bool
 ZarrStream_s::commit_settings_(const struct ZarrStreamSettings_s* settings)
 {
     store_path_ = zarr::trim(settings->store_path);
+    write_group_metadata_ = settings->write_group_metadata;
 
     std::optional<std::string> bucket_name;
     s3_settings_ = make_s3_settings(settings->s3_settings);
@@ -1664,9 +1667,12 @@ finalize_stream(struct ZarrStream_s* stream)
         }
     }
 
-    if (!stream->write_intermediate_metadata_()) {
-        LOG_ERROR(stream->error_);
-        return false;
+    // Only write intermediate (group) metadata if the flag is set
+    if (stream->write_group_metadata_) {
+        if (!stream->write_intermediate_metadata_()) {
+            LOG_ERROR(stream->error_);
+            return false;
+        }
     }
 
     return true;
