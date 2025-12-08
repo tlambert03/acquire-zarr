@@ -2040,6 +2040,7 @@ PYBIND11_MODULE(acquire_zarr, m)
                        std::optional<ZarrVersion> version,
                        std::optional<unsigned> max_threads,
                        std::optional<bool> overwrite,
+                       std::optional<bool> write_group_metadata,
                        std::optional<py::list> arrays,
                        std::optional<py::list> hcs_plates) {
                PyZarrStreamSettings settings;
@@ -2061,6 +2062,9 @@ PYBIND11_MODULE(acquire_zarr, m)
                }
                if (overwrite) {
                    settings.set_overwrite(*overwrite);
+               }
+               if (write_group_metadata) {
+                   settings.set_write_group_metadata(*write_group_metadata);
                }
                if (arrays) {
                    auto& arrs = *arrays;
@@ -2089,6 +2093,7 @@ PYBIND11_MODULE(acquire_zarr, m)
            py::arg("version") = std::nullopt,
            py::arg("max_threads") = std::nullopt,
            py::arg("overwrite") = std::nullopt,
+           py::arg("write_group_metadata") = std::nullopt,
            py::arg("arrays") = std::nullopt,
            py::arg("hcs_plates") = std::nullopt)
       .def("__repr__",
