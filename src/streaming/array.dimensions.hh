@@ -49,9 +49,20 @@ class ArrayDimensions
 
     size_t ndims() const;
 
+    /**
+     * @brief Check if this is a 2D array (only height and width dimensions).
+     * @return True if the array has exactly 2 dimensions.
+     */
+    bool is_2d() const { return dims_.size() == 2; }
+
     const ZarrDimension& operator[](size_t idx) const;
     const ZarrDimension& at(size_t idx) const { return operator[](idx); }
 
+    /**
+     * @brief Get the append (first) dimension.
+     * @note For 2D arrays, this returns a synthetic dimension with size 1.
+     *       For 3D+ arrays, this returns the first dimension.
+     */
     const ZarrDimension& final_dim() const;
     const ZarrDimension& height_dim() const;
     const ZarrDimension& width_dim() const;

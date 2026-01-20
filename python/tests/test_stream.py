@@ -1652,3 +1652,114 @@ def test_with_ragged_final_shard(store_path: Path):
     dataset = zarr.open(settings.store_path)
 
     np.testing.assert_array_equal(data, dataset["0"])
+
+
+def test_2d_array_stream(store_path: Path):
+    """Test that 2D arrays (only Y and X dimensions) can be created and streamed.
+
+    This tests the fix for issue #183: ArraySettings should support 2D arrays
+    with the output zarr metadata reflecting a true 2D image, not a 3D image
+    with a singleton dimension.
+    """
+    settings = StreamSettings(
+        store_path=str(store_path / "test_2d.zarr"),
+        arrays=[
+            ArraySettings(
+                dimensions=[
+                    Dimension(
+                        name="y",
+                        kind=DimensionType.SPACE,
+                        array_size_px=64,
+                        chunk_size_px=32,
+                        shard_size_chunks=1,
+                    ),
+                    Dimension(
+                        name="x",
+                        kind=DimensionType.SPACE,
+                        array_size_px=128,
+                        chunk_size_px=64,
+                        shard_size_chunks=1,
+                    ),
+                ],
+                data_type=np.uint16,
+            )
+        ]
+    )
+
+    stream = ZarrStream(settings)
+    assert stream
+
+    # Create a 2D image
+    data = np.random.randint(0, 65535, (64, 128), dtype=np.uint16)
+
+    stream.append(data)
+    stream.close()
+
+    # Verify the data
+    group = zarr.open(settings.store_path, mode="r")
+    array = group["0"]
+
+    # The shape should be exactly 2D [64, 128], NOT [1, 64, 128]
+    assert array.shape == (64, 128), f"Expected 2D shape (64, 128), got {array.shape}"
+
+    # Verify the data matches
+    np.testing.assert_array_equal(array, data)
+
+    # Verify metadata shows 2D dimensions
+    with open(Path(settings.store_path) / "0" / "zarr.json", "r") as fh:
+        metadata = json.load(fh)
+
+    assert metadata["shape"] == [64, 128], f"Expected 2D shape [64, 128], got {metadata['shape']}"
+    assert metadata["dimension_names"] == ["y", "x"], f"Expected dimension names ['y', 'x'], got {metadata['dimension_names']}"
+
+
+def test_2d_array_with_multiscale(store_path: Path):
+    """Test 2D arrays with multiscale downsampling."""
+    settings = StreamSettings(
+        store_path=str(store_path / "test_2d_multiscale.zarr"),
+        arrays=[
+            ArraySettings(
+                dimensions=[
+                    Dimension(
+                        name="y",
+                        kind=DimensionType.SPACE,
+                        array_size_px=64,
+                        chunk_size_px=32,
+                        shard_size_chunks=1,
+                    ),
+                    Dimension(
+                        name="x",
+                        kind=DimensionType.SPACE,
+                        array_size_px=128,
+                        chunk_size_px=64,
+                        shard_size_chunks=1,
+                    ),
+                ],
+                data_type=np.uint8,
+                downsampling_method=DownsamplingMethod.MEAN,
+            )
+        ]
+    )
+
+    stream = ZarrStream(settings)
+    assert stream
+
+    # Create a 2D image
+    data = np.random.randint(0, 255, (64, 128), dtype=np.uint8)
+
+    stream.append(data)
+    stream.close()
+
+    # Verify the data
+    group = zarr.open(settings.store_path, mode="r")
+
+    # Full resolution
+    assert "0" in group
+    full_res = group["0"]
+    assert full_res.shape == (64, 128), f"Expected 2D shape (64, 128), got {full_res.shape}"
+    np.testing.assert_array_equal(full_res, data)
+
+    # Downsampled
+    assert "1" in group
+    downsampled = group["1"]
+    assert downsampled.shape == (32, 64), f"Expected downsampled shape (32, 64), got {downsampled.shape}"

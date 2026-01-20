@@ -308,6 +308,7 @@ zarr::Downsampler::add_frame(LockedBuffer& frame)
     const auto& base_dims = writer_configurations_[0]->dimensions;
     size_t frame_width = base_dims->width_dim().array_size_px;
     size_t frame_height = base_dims->height_dim().array_size_px;
+    const bool is_2d = base_dims->is_2d();
 
     frame.with_lock([&](const auto& data) {
         ByteVector current_frame(data.begin(), data.end());
@@ -318,8 +319,9 @@ zarr::Downsampler::add_frame(LockedBuffer& frame)
               writer_configurations_[level - 1]->dimensions;
             const auto prev_width = prev_dims->width_dim().array_size_px;
             const auto prev_height = prev_dims->height_dim().array_size_px;
+            // For 2D arrays, there's no Z dimension - treat as single plane
             const auto prev_planes =
-              prev_dims->at(prev_dims->ndims() - 3).array_size_px;
+              is_2d ? 1u : prev_dims->at(prev_dims->ndims() - 3).array_size_px;
 
             EXPECT(prev_width == frame_width && prev_height == frame_height,
                    "Frame dimensions do not match expected dimensions: ",
@@ -334,8 +336,9 @@ zarr::Downsampler::add_frame(LockedBuffer& frame)
             const auto& next_dims = writer_configurations_[level]->dimensions;
             const auto next_width = next_dims->width_dim().array_size_px;
             const auto next_height = next_dims->height_dim().array_size_px;
+            // For 2D arrays, there's no Z dimension - treat as single plane
             const auto next_planes =
-              next_dims->at(next_dims->ndims() - 3).array_size_px;
+              is_2d ? 1u : next_dims->at(next_dims->ndims() - 3).array_size_px;
 
             // only downsample if this level's XY size is smaller than the last
             if (next_width < prev_width || next_height < prev_height) {
@@ -526,7 +529,10 @@ zarr::Downsampler::make_writer_configurations_(
     const auto n_levels_xy = std::min(n_levels_x, n_levels_y);
     auto n_levels = n_levels_xy;
 
-    if (base_dims->at(ndims - 3).type == ZarrDimensionType_Space) {
+    // For 3D+ arrays, check if the 3rd dimension (Z) is spatial and can be
+    // downsampled
+    const bool is_2d = (ndims == 2);
+    if (!is_2d && base_dims->at(ndims - 3).type == ZarrDimensionType_Space) {
         // if the 3rd dimension is spatial, we can downsample it as well
         const auto array_size_z = base_dims->at(ndims - 3).array_size_px;
         const auto chunk_size_z = base_dims->at(ndims - 3).chunk_size_px;
@@ -544,32 +550,51 @@ zarr::Downsampler::make_writer_configurations_(
 
         std::vector<ZarrDimension> down_dims(ndims);
 
-        // we don't downsample these dimensions, so just copy them
-        for (auto i = 0; i < ndims - 3; ++i) {
-            down_dims[i] = prev_dims->at(i);
-        }
+        if (is_2d) {
+            // For 2D arrays, we only have Y and X dimensions to downsample
+            const auto& y_dim = prev_dims->height_dim();
+            const auto& x_dim = prev_dims->width_dim();
 
-        const auto& z_dim = prev_dims->at(ndims - 3);
-        if (z_dim.type == ZarrDimensionType_Space &&
-            z_dim.array_size_px > z_dim.chunk_size_px) {
-            down_dims[ndims - 3] = downsample_dimension(z_dim);
+            if (std::min(y_dim.array_size_px, x_dim.array_size_px) >
+                std::max(y_dim.chunk_size_px, x_dim.chunk_size_px)) {
+                // downsample both dimensions
+                down_dims[0] = downsample_dimension(y_dim);
+                down_dims[1] = downsample_dimension(x_dim);
+            } else {
+                // fully downsampled, just copy them
+                down_dims[0] = y_dim;
+                down_dims[1] = x_dim;
+            }
         } else {
-            // not spatial or fully downsampled, so we just copy it
-            down_dims[ndims - 3] = z_dim;
-        }
+            // For 3D+ arrays, handle all dimensions
 
-        const auto& y_dim = prev_dims->height_dim();
-        const auto& x_dim = prev_dims->width_dim();
+            // we don't downsample these dimensions, so just copy them
+            for (size_t i = 0; i < ndims - 3; ++i) {
+                down_dims[i] = prev_dims->at(i);
+            }
 
-        if (std::min(y_dim.array_size_px, x_dim.array_size_px) >
-            std::max(y_dim.chunk_size_px, x_dim.chunk_size_px)) {
-            // downsample the final 2 dimensions
-            down_dims[ndims - 2] = downsample_dimension(y_dim);
-            down_dims[ndims - 1] = downsample_dimension(x_dim);
-        } else {
-            // not spatial or fully downsampled, so we just copy them
-            down_dims[ndims - 2] = y_dim;
-            down_dims[ndims - 1] = x_dim;
+            const auto& z_dim = prev_dims->at(ndims - 3);
+            if (z_dim.type == ZarrDimensionType_Space &&
+                z_dim.array_size_px > z_dim.chunk_size_px) {
+                down_dims[ndims - 3] = downsample_dimension(z_dim);
+            } else {
+                // not spatial or fully downsampled, so we just copy it
+                down_dims[ndims - 3] = z_dim;
+            }
+
+            const auto& y_dim = prev_dims->height_dim();
+            const auto& x_dim = prev_dims->width_dim();
+
+            if (std::min(y_dim.array_size_px, x_dim.array_size_px) >
+                std::max(y_dim.chunk_size_px, x_dim.chunk_size_px)) {
+                // downsample the final 2 dimensions
+                down_dims[ndims - 2] = downsample_dimension(y_dim);
+                down_dims[ndims - 1] = downsample_dimension(x_dim);
+            } else {
+                // not spatial or fully downsampled, so we just copy them
+                down_dims[ndims - 2] = y_dim;
+                down_dims[ndims - 1] = x_dim;
+            }
         }
 
         auto down_config = std::make_shared<ArrayConfig>(

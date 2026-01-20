@@ -164,19 +164,26 @@ zarr::Array::make_metadata_()
     std::vector<size_t> array_shape, chunk_shape, shard_shape;
     const auto& dims = config_->dimensions;
 
-    size_t append_size = frames_written_;
-    for (auto i = dims->ndims() - 3; i > 0; --i) {
-        const auto& dim = dims->at(i);
-        const auto& array_size_px = dim.array_size_px;
-        CHECK(array_size_px);
-        append_size = (append_size + array_size_px - 1) / array_size_px;
-    }
-    array_shape.push_back(append_size);
+    // For 2D arrays, we don't add an append dimension to the metadata
+    if (!dims->is_2d()) {
+        // Calculate append dimension size for 3D+ arrays
+        size_t append_size = frames_written_;
+        for (auto i = dims->ndims() - 3; i > 0; --i) {
+            const auto& dim = dims->at(i);
+            const auto& array_size_px = dim.array_size_px;
+            CHECK(array_size_px);
+            append_size = (append_size + array_size_px - 1) / array_size_px;
+        }
+        array_shape.push_back(append_size);
 
-    const auto& final_dim = dims->final_dim();
-    chunk_shape.push_back(final_dim.chunk_size_px);
-    shard_shape.push_back(final_dim.shard_size_chunks * chunk_shape.back());
-    for (auto i = 1; i < dims->ndims(); ++i) {
+        const auto& final_dim = dims->final_dim();
+        chunk_shape.push_back(final_dim.chunk_size_px);
+        shard_shape.push_back(final_dim.shard_size_chunks * chunk_shape.back());
+    }
+
+    // Add remaining dimensions (all dimensions for 2D, dims 1..n for 3D+)
+    const size_t start_idx = dims->is_2d() ? 0 : 1;
+    for (auto i = start_idx; i < dims->ndims(); ++i) {
         const auto& dim = dims->at(i);
         array_shape.push_back(dim.array_size_px);
         chunk_shape.push_back(dim.chunk_size_px);

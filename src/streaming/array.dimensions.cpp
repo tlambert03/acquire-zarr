@@ -11,14 +11,16 @@ ArrayDimensions::ArrayDimensions(std::vector<ZarrDimension>&& dims,
   , bytes_per_chunk_(zarr::bytes_of_type(dtype))
   , number_of_chunks_in_memory_(1)
 {
-    EXPECT(dims_.size() > 2, "Array must have at least three dimensions.");
+    EXPECT(dims_.size() > 1, "Array must have at least two dimensions.");
 
     for (auto i = 0; i < dims_.size(); ++i) {
         const auto& dim = dims_[i];
         bytes_per_chunk_ *= dim.chunk_size_px;
         chunks_per_shard_ *= dim.shard_size_chunks;
 
-        if (i > 0) {
+        // For 2D arrays (ndims == 2), all dimensions contribute to memory/shards
+        // For 3D+ arrays, we skip the first dimension (append dimension)
+        if (dims_.size() == 2 || i > 0) {
             number_of_chunks_in_memory_ *= zarr::chunks_along_dimension(dim);
             number_of_shards_ *= zarr::shards_along_dimension(dim);
         }
@@ -47,9 +49,24 @@ ArrayDimensions::operator[](size_t idx) const
     return dims_[idx];
 }
 
+// Static synthetic dimension for 2D arrays (no append dimension)
+static const ZarrDimension synthetic_append_dim_2d{
+    "",                     // name
+    ZarrDimensionType_Other, // type
+    1,                      // array_size_px
+    1,                      // chunk_size_px
+    1,                      // shard_size_chunks
+    "",                     // unit
+    1.0                     // scale
+};
+
 const ZarrDimension&
 ArrayDimensions::final_dim() const
 {
+    // For 2D arrays, return a synthetic append dimension with size 1
+    if (is_2d()) {
+        return synthetic_append_dim_2d;
+    }
     return dims_[0];
 }
 
@@ -100,6 +117,11 @@ ArrayDimensions::chunk_lattice_index(uint64_t frame_id,
 uint32_t
 ArrayDimensions::tile_group_offset(uint64_t frame_id) const
 {
+    // For 2D arrays, there's only one tile group (no append dimension)
+    if (is_2d()) {
+        return 0;
+    }
+
     std::vector<size_t> strides(dims_.size(), 1);
     for (auto i = dims_.size() - 1; i > 0; --i) {
         const auto& dim = dims_[i];
@@ -120,6 +142,11 @@ ArrayDimensions::tile_group_offset(uint64_t frame_id) const
 uint64_t
 ArrayDimensions::chunk_internal_offset(uint64_t frame_id) const
 {
+    // For 2D arrays, there's only one frame at offset 0
+    if (is_2d()) {
+        return 0;
+    }
+
     const auto tile_size = zarr::bytes_of_type(dtype_) *
                            width_dim().chunk_size_px *
                            height_dim().chunk_size_px;
@@ -176,6 +203,10 @@ ArrayDimensions::chunks_per_shard() const
 uint32_t
 ArrayDimensions::chunk_layers_per_shard() const
 {
+    // For 2D arrays, there's only one layer (no append dimension)
+    if (is_2d()) {
+        return 1;
+    }
     return dims_[0].shard_size_chunks;
 }
 

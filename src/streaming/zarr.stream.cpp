@@ -377,11 +377,11 @@ validate_array_settings(const ZarrArraySettings* settings,
         return false;
     }
 
-    // we must have at least 3 dimensions
+    // we must have at least 2 dimensions
     const size_t ndims = settings->dimension_count;
-    if (ndims < 3) {
+    if (ndims < 2) {
         error = "Invalid number of dimensions: " + std::to_string(ndims) +
-                ". Must be at least 3";
+                ". Must be at least 2";
         return false;
     }
 
@@ -398,8 +398,11 @@ validate_array_settings(const ZarrArraySettings* settings,
     }
 
     // validate the dimensions individually
+    // For 2D arrays, there's no append dimension - both dimensions need array_size > 0
+    // For 3D+ arrays, only the first dimension (append) can have array_size = 0
     for (size_t i = 0; i < ndims; ++i) {
-        if (!validate_dimension(settings->dimensions + i, i == 0, error)) {
+        const bool is_append_dim = (i == 0 && ndims > 2);
+        if (!validate_dimension(settings->dimensions + i, is_append_dim, error)) {
             return false;
         }
     }
