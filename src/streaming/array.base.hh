@@ -22,7 +22,8 @@ struct ArrayConfig
                 std::shared_ptr<ArrayDimensions> dimensions,
                 ZarrDataType dtype,
                 std::optional<ZarrDownsamplingMethod> downsampling_method,
-                uint16_t level_of_detail)
+                uint16_t level_of_detail,
+                bool multiscale = false)
       : store_root(store_root)
       , node_key(group_key)
       , bucket_name(bucket_name)
@@ -30,6 +31,7 @@ struct ArrayConfig
       , dimensions(std::move(dimensions))
       , dtype(dtype)
       , downsampling_method(downsampling_method)
+      , multiscale(multiscale)
       , level_of_detail(level_of_detail)
     {
         if (downsampling_method.has_value() &&
@@ -49,6 +51,7 @@ struct ArrayConfig
     std::shared_ptr<ArrayDimensions> dimensions;
     ZarrDataType dtype;
     std::optional<ZarrDownsamplingMethod> downsampling_method;
+    bool multiscale;
     uint16_t level_of_detail;
 };
 

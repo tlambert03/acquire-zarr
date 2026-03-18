@@ -60,6 +60,7 @@ def main():
                 ),
             ],
             data_type=np.uint16,
+            write_multiscales_metadata=True,
             downsampling_method=DownsamplingMethod.MEAN,
         )
     ]

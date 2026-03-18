@@ -103,10 +103,8 @@ zarr::make_array(std::shared_ptr<ArrayConfig> config,
                  std::shared_ptr<S3ConnectionPool> s3_connection_pool,
                  bool is_hcs_array)
 {
-    const auto multiscale = config->downsampling_method.has_value();
-
     std::unique_ptr<ArrayBase> array;
-    if (multiscale || is_hcs_array) {
+    if (config->multiscale || is_hcs_array) {
         array = std::make_unique<MultiscaleArray>(
           config, thread_pool, file_handle_pool, s3_connection_pool);
     } else {

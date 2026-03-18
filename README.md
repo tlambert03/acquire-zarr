@@ -254,6 +254,15 @@ stream.append(my_frame_data)
 stream.close()
 ```
 
+### Understanding the output hierarchy
+
+If `write_multiscales_metadata` is `False` (the default), a simple array
+node is written. Otherwise, the array is wrapped in an OME-NGFF multiscales
+group. `output_key` determines the path within the store.
+`downsampling_method` adds pyramid levels to a multiscales group (and
+requires `write_multiscales_metadata=True`). The number of pyramid levels
+is determined automatically from the chunk and array sizes.
+
 ### Organizing data within a Zarr container
 
 The library allows you to stream multiple arrays to a single Zarr dataset by configuring multiple arrays.

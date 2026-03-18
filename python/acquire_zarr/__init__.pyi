@@ -58,14 +58,28 @@ class Acquisition:
 class ArraySettings:
     """Settings for a single array in the Zarr stream.
 
+    If ``write_multiscales_metadata`` is False (the default), a simple
+    array node is written. Otherwise, the array is wrapped in an OME-NGFF
+    multiscales group. ``output_key`` determines the path within the store.
+    ``downsampling_method`` adds pyramid levels to a multiscales group
+    (and requires ``write_multiscales_metadata=True``).
+
     Attributes:
-      output_key: Key within the Zarr dataset where this array will be stored. For an Array belonging to a FieldOfView,
-        this MUST be None.
+      output_key: Path within the Zarr store where this array (or multiscales
+        group) will be written, relative to ``StreamSettings.store_path``. If
+        empty or omitted, the array is placed at the store root. For an Array
+        belonging to a FieldOfView, this MUST be None.
       dimensions: List of dimension properties defining the dataset structure.
         Should be ordered from slowest to fastest changing (e.g., [Z, Y, X] for 3D data).
       data_type: The pixel data type for the dataset.
       compression: Optional compression settings for chunks. If None, no compression is applied.
-      downsampling_method: Method used for generating optional multiscale levels (image pyramid).
+      downsampling_method: Downsampling method for generating pyramid levels
+        within a multiscales group. Requires
+        ``write_multiscales_metadata=True``. When None (default), no
+        downsampling is performed.
+      write_multiscales_metadata: Whether to wrap the array in an OME-NGFF
+        multiscales group. Defaults to False. When True without a
+        ``downsampling_method``, a single-level multiscales group is created.
       storage_dimension_order: Order of dimensions for storage, which may different
         from the acquisition order defined in `dimensions`. Must be a list of dimension
         names corresponding to those in `dimensions`.
@@ -83,6 +97,7 @@ class ArraySettings:
     data_type: Union[DataType, numpy.dtype]
     compression: Optional[CompressionSettings]
     downsampling_method: Optional[DownsamplingMethod]
+    write_multiscales_metadata: bool
     storage_dimension_order: List[str]
 
     def __init__(self, **kwargs) -> None: ...

@@ -37,6 +37,7 @@ struct ArrayLifetimeProps
     bool has_compression{ false };
     ZarrDataType data_type;
     std::optional<ZarrDownsamplingMethod> downsampling_method;
+    bool write_multiscales_metadata{ false };
 
     ZarrArraySettings* array_settings()
     {
@@ -75,9 +76,18 @@ struct ArrayLifetimeProps
         }
 
         array_settings_.data_type = data_type;
-        array_settings_.multiscale = downsampling_method.has_value();
-        array_settings_.downsampling_method =
-          downsampling_method.value_or(ZarrDownsamplingMethod_Mean);
+        array_settings_.multiscale = write_multiscales_metadata;
+        if (downsampling_method.has_value()) {
+            if (!write_multiscales_metadata) {
+                throw std::invalid_argument(
+                  "downsampling_method requires "
+                  "write_multiscales_metadata=True");
+            }
+            array_settings_.downsampling_method = *downsampling_method;
+        } else {
+            array_settings_.downsampling_method =
+              ZarrDownsamplingMethodCount;
+        }
 
         if (!storage_dimension_order.empty()) {
             array_settings_.storage_dimension_order =
@@ -572,6 +582,16 @@ class PyZarrArraySettings
         downsampling_method_ = method;
     }
 
+    bool write_multiscales_metadata() const
+    {
+        return write_multiscales_metadata_;
+    }
+
+    void set_write_multiscales_metadata(bool value)
+    {
+        write_multiscales_metadata_ = value;
+    }
+
     const std::vector<std::string>& storage_dimension_order() const
     {
         return storage_dimension_order_;
@@ -626,6 +646,7 @@ class PyZarrArraySettings
         lt_props.output_key = output_key_;
         lt_props.data_type = data_type_;
         lt_props.downsampling_method = downsampling_method_;
+        lt_props.write_multiscales_metadata = write_multiscales_metadata_;
 
         // compression settings
         if (compression_settings_.has_value()) {
@@ -692,6 +713,7 @@ class PyZarrArraySettings
     std::vector<PyZarrDimensionProperties> dims_;
     ZarrDataType data_type_{ ZarrDataType_uint8 };
     std::optional<ZarrDownsamplingMethod> downsampling_method_{ std::nullopt };
+    bool write_multiscales_metadata_{ false };
     std::vector<std::string> storage_dimension_order_;
 };
 
@@ -1562,6 +1584,7 @@ PYBIND11_MODULE(acquire_zarr, m)
                     std::optional<py::list> dimensions,
                     std::optional<py::object> data_type,
                     std::optional<ZarrDownsamplingMethod> downsampling_method,
+                    bool write_multiscales_metadata,
                     std::optional<py::list> storage_dimension_order) {
             PyZarrArraySettings settings;
 
@@ -1600,6 +1623,8 @@ PYBIND11_MODULE(acquire_zarr, m)
             if (downsampling_method) {
                 settings.set_downsampling_method(*downsampling_method);
             }
+            settings.set_write_multiscales_metadata(
+              write_multiscales_metadata);
             if (storage_dimension_order) {
                 auto& order_list = *storage_dimension_order;
                 std::vector<std::string> order_vec(order_list.size());
@@ -1617,6 +1642,7 @@ PYBIND11_MODULE(acquire_zarr, m)
         py::arg("dimensions") = std::nullopt,
         py::arg("data_type") = std::nullopt,
         py::arg("downsampling_method") = std::nullopt,
+        py::arg("write_multiscales_metadata") = false,
         py::arg("storage_dimension_order") = std::nullopt)
       .def("__repr__",
            [](const PyZarrArraySettings& self) {
@@ -1653,6 +1679,10 @@ PYBIND11_MODULE(acquire_zarr, m)
                            method_str = "None";
                    }
                    repr += ", downsampling_method=" + method_str;
+               }
+
+               if (self.write_multiscales_metadata()) {
+                   repr += ", write_multiscales_metadata=True";
                }
 
                repr += ")";
@@ -1731,6 +1761,9 @@ PYBIND11_MODULE(acquire_zarr, m)
                   obj.cast<ZarrDownsamplingMethod>());
             }
         })
+      .def_property("write_multiscales_metadata",
+                    &PyZarrArraySettings::write_multiscales_metadata,
+                    &PyZarrArraySettings::set_write_multiscales_metadata)
       .def_property("storage_dimension_order",
                     &PyZarrArraySettings::storage_dimension_order,
                     &PyZarrArraySettings::set_storage_dimension_order);

@@ -111,6 +111,7 @@ def main():
                     ),
                 ],
                 data_type=np.float32,
+                write_multiscales_metadata=True,
                 downsampling_method=DownsamplingMethod.MEAN,
             ),
             ArraySettings(
@@ -139,6 +140,7 @@ def main():
                     ),
                 ],
                 data_type=np.uint8,
+                write_multiscales_metadata=True,
                 downsampling_method=DownsamplingMethod.MAX,
             ),
         ],

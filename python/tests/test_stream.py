@@ -755,6 +755,7 @@ def test_custom_dimension_units_and_scales(store_path: Path):
                     ),
                 ],
                 data_type=np.int32,
+                write_multiscales_metadata=True,
                 downsampling_method=DownsamplingMethod.MEAN,
             )
         ]
@@ -849,6 +850,7 @@ def test_2d_multiscale_stream(store_path: Path, method: DownsamplingMethod):
                     ),
                 ],
                 data_type=np.int32,
+                write_multiscales_metadata=True,
                 downsampling_method=method,
             )
         ]
@@ -936,6 +938,7 @@ def test_3d_multiscale_stream(store_path: Path, method: DownsamplingMethod):
                     ),
                 ],
                 data_type=np.uint16,
+                write_multiscales_metadata=True,
                 downsampling_method=method,
             )
         ]
@@ -1031,6 +1034,8 @@ def test_stream_data_to_named_array(
         / f"stream_to_named_array_{output_key.replace('/', '_')}.zarr"
     )
     settings.arrays[0].output_key = output_key
+    if downsampling_method is not None:
+        settings.arrays[0].write_multiscales_metadata = True
     settings.arrays[0].downsampling_method = downsampling_method
     settings.arrays[0].data_type = np.uint16
 
@@ -1083,6 +1088,7 @@ def test_stream_data_to_named_array(
 def test_anisotropic_downsampling(settings: StreamSettings, store_path: Path):
     settings.store_path = str(store_path / "anisotropic_downsampling.zarr")
     settings.arrays[0].data_type = np.uint8
+    settings.arrays[0].write_multiscales_metadata = True
     settings.arrays[0].downsampling_method = DownsamplingMethod.MEAN
     settings.arrays[0].dimensions = [
         Dimension(
@@ -1209,6 +1215,7 @@ def test_multiarray_metadata_structure(
         ArraySettings(
             output_key="path/to/array1",
             data_type=np.uint8,
+            write_multiscales_metadata=True,
             downsampling_method=DownsamplingMethod.MEAN,
             dimensions=[
                 Dimension(
@@ -1792,3 +1799,170 @@ def test_append_throws_on_overflow(
         stream.append(one_more_byte)
 
         assert e
+
+
+def _make_dims():
+    """Return a minimal 2D dimension list for testing hierarchy structure."""
+    return [
+        Dimension(
+            name="y",
+            kind=DimensionType.SPACE,
+            array_size_px=64,
+            chunk_size_px=32,
+            shard_size_chunks=1,
+        ),
+        Dimension(
+            name="x",
+            kind=DimensionType.SPACE,
+            array_size_px=64,
+            chunk_size_px=32,
+            shard_size_chunks=1,
+        ),
+    ]
+
+
+def _write_frame(settings):
+    """Create a stream, write one frame, close, return the store path."""
+    frame = np.zeros(
+        tuple(d.array_size_px for d in settings.arrays[0].dimensions),
+        dtype=np.uint8,
+    )
+    stream = ZarrStream(settings)
+    stream.append(frame)
+    stream.close()
+    return Path(settings.store_path)
+
+
+def test_simple_array_no_multiscales(store_path: Path):
+    """No output_key, no downsampling -> simple array at store root."""
+    settings = StreamSettings(
+        store_path=str(store_path / "test.zarr"),
+        arrays=[ArraySettings(dimensions=_make_dims(), data_type=np.uint8)],
+    )
+    root = _write_frame(settings)
+
+    meta = json.loads((root / "zarr.json").read_text())
+    assert meta["node_type"] == "array"
+    assert "ome" not in meta.get("attributes", {})
+
+
+def test_simple_array_with_output_key(store_path: Path):
+    """output_key set, no downsampling -> simple array at output_key path."""
+    output_key = "Pos0"
+    settings = StreamSettings(
+        store_path=str(store_path / "test.zarr"),
+        arrays=[
+            ArraySettings(
+                output_key=output_key,
+                dimensions=_make_dims(),
+                data_type=np.uint8
+            )
+        ],
+    )
+    root = _write_frame(settings)
+
+    # Pos0 should be a plain array node
+    meta = json.loads((root / output_key / "zarr.json").read_text())
+    assert meta["node_type"] == "array"
+    assert "ome" not in meta.get("attributes", {})
+
+
+def test_write_multiscales_metadata_without_downsampling(store_path: Path):
+    """write_multiscales_metadata=True, no downsampling -> single-level
+    OME-NGFF multiscales group."""
+    settings = StreamSettings(
+        store_path=str(store_path / "test.zarr"),
+        arrays=[
+            ArraySettings(
+                output_key="Pos0",
+                dimensions=_make_dims(),
+                data_type=np.uint8,
+                write_multiscales_metadata=True,
+            )
+        ],
+    )
+    root = _write_frame(settings)
+
+    group = zarr.open(str(root / "Pos0"), mode="r")
+    assert "ome" in group.attrs
+    assert "multiscales" in group.attrs["ome"]
+    # single level, no downsampling
+    datasets = group.attrs["ome"]["multiscales"][0]["datasets"]
+    assert len(datasets) == 1
+    assert "0" in group
+
+
+def test_downsampling_requires_write_multiscales_metadata(store_path: Path):
+    """downsampling_method without write_multiscales_metadata raises."""
+    settings = StreamSettings(
+        store_path=str(store_path / "test.zarr"),
+        arrays=[
+            ArraySettings(
+                output_key="Pos0",
+                dimensions=_make_dims(),
+                data_type=np.uint8,
+                downsampling_method=DownsamplingMethod.MEAN,
+            )
+        ],
+    )
+    with pytest.raises(Exception):
+        ZarrStream(settings)
+
+
+def test_downsampling_with_multiscales(store_path: Path):
+    """downsampling_method + write_multiscales_metadata -> pyramid."""
+    settings = StreamSettings(
+        store_path=str(store_path / "test.zarr"),
+        arrays=[
+            ArraySettings(
+                output_key="Pos0",
+                dimensions=_make_dims(),
+                data_type=np.uint8,
+                write_multiscales_metadata=True,
+                downsampling_method=DownsamplingMethod.MEAN,
+            )
+        ],
+    )
+    root = _write_frame(settings)
+
+    group = zarr.open(str(root / "Pos0"), mode="r")
+    assert "ome" in group.attrs
+    assert "multiscales" in group.attrs["ome"]
+    assert "0" in group
+
+
+def test_multiple_positions_each_multiscales(store_path: Path):
+    """Multiple output_keys with write_multiscales_metadata -> each is
+    an independent OME-NGFF multiscales group (the collection use case
+    from issue #182)."""
+    settings = StreamSettings(
+        store_path=str(store_path / "test.zarr"),
+        arrays=[
+            ArraySettings(
+                output_key="Pos0",
+                dimensions=_make_dims(),
+                data_type=np.uint8,
+                write_multiscales_metadata=True,
+            ),
+            ArraySettings(
+                output_key="Pos1",
+                dimensions=_make_dims(),
+                data_type=np.uint8,
+                write_multiscales_metadata=True,
+            ),
+        ],
+    )
+    frame = np.zeros((64, 64), dtype=np.uint8)
+    stream = ZarrStream(settings)
+    stream.append(frame, key="Pos0")
+    stream.append(frame, key="Pos1")
+    stream.close()
+
+    root = Path(settings.store_path)
+    for pos in ("Pos0", "Pos1"):
+        group = zarr.open(str(root / pos), mode="r")
+        assert "ome" in group.attrs
+        assert "multiscales" in group.attrs["ome"]
+        datasets = group.attrs["ome"]["multiscales"][0]["datasets"]
+        assert len(datasets) == 1
+        assert "0" in group
